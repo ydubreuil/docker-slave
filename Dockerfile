@@ -22,17 +22,34 @@
 
 FROM java:8-jdk
 
-RUN curl --create-dirs -sSLo /usr/share/jenkins/slave.jar http://repo.jenkins-ci.org/public/org/jenkins-ci/main/remoting/2.52/remoting-2.52.jar \
-  && chmod 755 /usr/share/jenkins \
-  && chmod 644 /usr/share/jenkins/slave.jar
-
 ENV HOME /home/jenkins
-RUN groupadd -g 10000 jenkins
-RUN useradd -c "Jenkins user" -d $HOME -u 10000 -g 10000 -m jenkins
+RUN groupadd -g 10000 jenkins && \
+    useradd -c "Jenkins user" -d $HOME -u 10000 -g 10000 -m jenkins
+
+RUN mkdir /usr/share/jenkins
+ADD http://repo.jenkins-ci.org/public/org/jenkins-ci/main/remoting/2.54/remoting-2.54.jar /usr/share/jenkins/slave.jar
+RUN chmod 644 /usr/share/jenkins/slave.jar
+
+RUN mkdir /tmp/hotcache
+ADD http://updates.jenkins-ci.org/download/war/1.625.2/jenkins.war $HOME/.jenkins/war
+ADD http://updates.jenkins-ci.org/download/plugins/maven-plugin/2.12.1/maven-plugin.hpi /tmp/files
+ADD http://updates.jenkins-ci.org/download/plugins/subversion/2.5.4/subversion.hpi /tmp/files
+ADD http://updates.jenkins-ci.org/download/plugins/git-client/1.19.0/git-client.hpi /tmp/files
+
+RUN chmod -R 755 /tmp/files
 
 WORKDIR $HOME
 USER jenkins
 
-RUN mkdir /home/jenkins/.tmp
+RUN mkdir -p $HOME/.tmp $HOME/.jenkins/cache/jars $HOME/.jenkins/war/extracted
 
+RUN unzip -q -n /tmp/hotcache/jenkins.war -d $HOME/.jenkins/war/extracted WEB-INF/lib/* && \
+    for i in /tmp/hotcache/*.hpi; do unzip -q -n $i -d $HOME/.jenkins/war/extracted WEB-INF/lib/*; done && \
+    java -cp /usr/share/jenkins/slave.jar hudson.remoting.InitializeJarCacheMain $HOME/.jenkins/war/extracted/WEB-INF/lib $HOME/.jenkins/cache/jars && \
+    rm -rf $HOME/.jenkins/war
+
+USER root
+RUN rm -rf /tmp/files
+
+USER jenkins
 VOLUME ["/home/jenkins"]
